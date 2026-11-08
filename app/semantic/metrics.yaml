@@ -1,0 +1,67 @@
+metrics:
+  - name: gmv
+    display_name: GMV（商品交易总额）
+    description: 已完成订单的金额总和；不含退款、待支付与已取消订单
+    expression: "SUM(orders.amount)"
+    grain: order
+    dimensions: [month, region, channel, category]
+    synonyms: [成交额, 交易额, 销售额, 交易总额, 营收]
+    required_filters:
+      - "orders.status = 'completed'"
+
+  - name: net_sales
+    display_name: 净销售额
+    description: 实际到手销售额 = 已完成订单金额 − 已退款金额；与 GMV 的差额即退款影响
+    expression: "SUM(CASE WHEN orders.status = 'completed' THEN orders.amount WHEN orders.status = 'refunded' THEN -orders.amount ELSE 0 END)"
+    grain: order
+    dimensions: [month, region, channel, category]
+    synonyms: [净营收, 销售额, 实收, 实收金额]
+    required_filters: []
+
+  - name: order_count
+    display_name: 订单量
+    description: 已完成订单的笔数
+    expression: "COUNT(*)"
+    grain: order
+    dimensions: [month, region, channel, category]
+    synonyms: [订单数, 订单量, 单量, 成交笔数]
+    required_filters:
+      - "orders.status = 'completed'"
+
+  - name: aov
+    display_name: 客单价
+    description: 平均每笔已完成订单的金额 = GMV / 订单量
+    expression: "SUM(orders.amount) / COUNT(*)"
+    grain: order
+    dimensions: [month, region, channel, category]
+    synonyms: [平均订单金额, 每单价格, 人均消费]
+    required_filters:
+      - "orders.status = 'completed'"
+
+  - name: refund_rate
+    display_name: 退款率
+    description: 已退款订单金额 / 全部订单金额，基于所有状态订单计算
+    expression: "SUM(CASE WHEN orders.status = 'refunded' THEN orders.amount ELSE 0 END) / SUM(orders.amount)"
+    grain: order
+    dimensions: [month, region, channel, category]
+    synonyms: [退款比例, 退款占比]
+    required_filters: []
+
+  - name: active_users
+    display_name: 付费用户数
+    description: 时间范围内有已完成订单的去重用户数
+    expression: "COUNT(DISTINCT orders.user_id)"
+    grain: order
+    dimensions: [month, region, channel]
+    synonyms: [购买用户数, 活跃用户, 下单用户数]
+    required_filters:
+      - "orders.status = 'completed'"
+
+  - name: new_users
+    display_name: 新增用户数
+    description: 时间范围内新注册用户数，基于 users.register_date 统计，与订单状态无关
+    expression: "COUNT(users.id)"
+    grain: user
+    dimensions: [month, region]
+    synonyms: [新注册用户, 新用户, 注册用户]
+    required_filters: []

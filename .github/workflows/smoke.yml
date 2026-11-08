@@ -1,0 +1,25 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+      - name: 生成演示数据
+        run: python -m app.seed_data
+      - name: 冒烟自测（35 项）
+        run: python tests/smoke.py

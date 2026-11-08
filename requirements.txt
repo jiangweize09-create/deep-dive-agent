@@ -1,0 +1,23 @@
+# 锁定版本 = 各包在开发环境（.venv）实测通过的精确版本。
+# 本项目依赖 LangChain 1.x 的内部解析点（app/agent/llm.py 重写
+# _convert_chunk_to_generation_chunk 透传 reasoning_content），
+# 大版本漂移会在该处显式报错——升级前请先跑 tests/smoke.py。
+fastapi==0.143.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+pydantic==2.14.1
+PyYAML==6.0.3
+python-dotenv==1.2.4
+sqlglot==30.22.0
+duckdb==1.5.6
+langgraph==1.2.14
+langgraph-checkpoint-sqlite==3.1.2
+langchain-core==1.6.9
+langchain-openai==1.7.0
+httpx==0.28.1
+scipy==1.17.1
+openpyxl==3.1.5
+Markdown==3.11.1
+python-docx==1.2.0
+python-pptx==1.0.2
+pypdf==6.21.0

@@ -1,0 +1,17 @@
+# 永远不进镜像的东西
+.git
+.venv
+venv
+node_modules
+**/__pycache__
+*.pyc
+data
+.env
+.idea
+.vscode
+.screenshots
+AGENTS.md
+docs
+web
+*.duckdb
+*.duckdb.wal

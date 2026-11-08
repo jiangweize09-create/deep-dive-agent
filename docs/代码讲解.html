@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Dive Agent 代码讲解（公司部门比喻版）</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --panel:#fff; --line:#e6e9ef; --text:#1c2333; --muted:#5b6675; --faint:#9aa3b2;
+    --accent:#2f6bff; --accent-weak:#eaf0ff; --accent-deep:#1e4fd6;
+    --ok:#12b76a; --warn:#b25e09; --bad:#e5484d;
+    --r:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.7}
+  .wrap{max-width:920px;margin:0 auto;padding:18px 16px 60px}
+  h1{font-size:22px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  /* tabs */
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 2px;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line);scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;padding:7px 13px;border:1px solid var(--line);background:var(--panel);border-radius:999px;font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .panel{display:none;margin-top:18px}
+  .panel.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:14px}
+  .card h2{font-size:16px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .card h3{font-size:14px;margin:14px 0 6px;color:var(--accent-deep)}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;background:var(--accent-weak);color:var(--accent-deep);font-weight:500}
+  .tag.ok{background:#e9f9f1;color:var(--ok)}
+  .tag.bad{background:#fdeeee;color:var(--bad)}
+  .tag.warn{background:#fdf4e3;color:var(--warn)}
+  code{background:#eef1f6;border-radius:5px;padding:1px 6px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+  pre{background:#141a26;color:#d7e0ee;border-radius:10px;padding:12px 14px;overflow-x:auto;font-size:12px;line-height:1.6;margin:8px 0}
+  pre .k{color:#7aa2ff} pre .s{color:#9ad28a} pre .c{color:#6b7689}
+  ul,ol{margin:6px 0 6px 20px} li{margin:3px 0}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0}
+  th,td{border:1px solid var(--line);padding:6px 10px;text-align:left}
+  th{background:#f3f4f7;font-weight:500;color:var(--muted)}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:10px 0}
+  .dept{border:1px solid var(--line);border-radius:12px;padding:12px;background:linear-gradient(180deg,#fff,#fbfcfe)}
+  .dept .ic{font-size:22px} .dept .nm{font-weight:600;margin:4px 0 2px;font-size:13.5px}
+  .dept .role{font-size:12px;color:var(--muted)}
+  .note{border-left:3px solid #c9d4f5;background:#f7f9ff;padding:8px 12px;border-radius:0 8px 8px 0;font-size:12.5px;margin:8px 0;color:var(--muted)}
+  .flow{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:6px 0}
+  .fnode{flex:0 0 auto;min-width:120px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;font-size:12px}
+  .fnode b{display:block;color:var(--accent-deep);margin-bottom:2px}
+  .farrow{flex:0 0 auto;display:flex;align-items:center;color:var(--faint);padding:0 6px}
+  .pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:6px;background:#f0f2f5;color:var(--muted);margin-right:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div style="background:#fff7e6;border:1px solid #f0c36d;border-radius:10px;padding:14px 18px;margin:0 0 18px;font-size:14px;line-height:1.8;color:#7a4d00;">
+<b>📜 历史归档说明</b>：本文基于 2026-09 的代码快照编写，部分内容已过时——现品牌为
+<b>Deep Dive</b>、前端仅保留 React 版（原生 JS 旧版已移除）、SQL 子 Agent 工具 10 个、
+AST 护栏 9 项、主 Agent 纪律 15 条。最新架构请以 <b>README.md</b> 为准，本文仅作教学讲解的历史参考。
+</div>
+<h1>Deep Dive Agent · 代码讲解</h1>
+<div class="sub">自然语言 → 语义层 → 护栏校验 SQL → 执行 → 图表结论。核心原则：<b>LLM 决定做什么，工作流（护栏）保证不能做什么。</b></div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-t="0">① 总览·部门比喻</div>
+  <div class="tab" data-t="1">② 一次请求怎么走</div>
+  <div class="tab" data-t="2">③ 数据层</div>
+  <div class="tab" data-t="3">④ 语义层</div>
+  <div class="tab" data-t="4">⑤ 五个工具</div>
+  <div class="tab" data-t="5">⑥ 护栏（保安）</div>
+  <div class="tab" data-t="6">⑦ 大脑与调度</div>
+  <div class="tab" data-t="7">⑧ 演示 vs 真LLM</div>
+  <div class="tab" data-t="8">⑨ 前端界面</div>
+  <div class="tab" data-t="9">⑩ 评测·测试·启动</div>
+</div>
+
+<!-- ===== 0 总览 ===== -->
+<div class="panel active" data-p="0">
+  <div class="card">
+    <h2>🏢 把整个项目想成一家「数据分析公司」</h2>
+    <p class="muted">每个文件/文件夹 = 一个部门或一个人。你问一句话，公司里各部门接力把它变成图表。</p>
+    <div class="grid">
+      <div class="dept"><div class="ic">🖥️</div><div class="nm">frontend/</div><div class="role">前台接待 + 展示大屏（你看到的聊天界面）</div></div>
+      <div class="dept"><div class="ic">☎️</div><div class="nm">main.py</div><div class="role">总机转接：收到问题，分流给对应小组</div></div>
+      <div class="dept"><div class="ic">📋</div><div class="nm">config.py</div><div class="role">规章制度：路径、限额、LLM 配置</div></div>
+      <div class="dept"><div class="ic">🗄️</div><div class="nm">db.py</div><div class="role">档案室：只读查数据库</div></div>
+      <div class="dept"><div class="ic">🏭</div><div class="nm">seed_data.py</div><div class="role">数据工厂：造 12 个月演示数据</div></div>
+      <div class="dept"><div class="ic">📚</div><div class="nm">semantic/</div><div class="role">公司字典：表/字段/指标/口径，唯一事实来源</div></div>
+      <div class="dept"><div class="ic">🧠</div><div class="nm">agent/graph.py</div><div class="role">部门经理 + 调度中心（LangGraph）</div></div>
+      <div class="dept"><div class="ic">📝</div><div class="nm">agent/prompts.py</div><div class="role">经理工作手册（7 条纪律）</div></div>
+      <div class="dept"><div class="ic">🔧</div><div class="nm">tools/</div><div class="role">5 个执行员工：查字典/校验/执行/画图</div></div>
+      <div class="dept"><div class="ic">🛡️</div><div class="nm">guardrails/</div><div class="role">合规保安：SQL 写错/越权一律拦下</div></div>
+      <div class="dept"><div class="ic">🎬</div><div class="nm">demo/traces.py</div><div class="role">实习生话术脚本：没接 LLM 也能演全套</div></div>
+      <div class="dept"><div class="ic">✅</div><div class="nm">eval/</div><div class="role">质检部：用标准答案考 Agent 准不准</div></div>
+      <div class="dept"><div class="ic">🚪</div><div class="nm">run.py</div><div class="role">公司大门：一键开门营业</div></div>
+    </div>
+    <div class="note">关键认知：<b>演示模式下</b>，只有「经理」（LLM）是脚本假扮的，<b>查字典、护栏、执行 SQL、画图全是真的</b>。所以没配 API Key 也能完整体验链路和护栏拦截。</div>
+  </div>
+
+  <div class="card">
+    <h2>📂 目录结构一图看懂</h2>
+    <pre><span class="c">xihuang-agent/</span>
+├── run.py              <span class="c"># 启动入口（uvicorn）</span>
+├── requirements.txt    <span class="c"># 依赖清单</span>
+├── README.md           <span class="c"># 项目说明书</span>
+├── .env.example        <span class="c"># LLM 配置样例</span>
+├── app/
+│   ├── main.py         <span class="c"># FastAPI + SSE 流式接口</span>
+│   ├── config.py       <span class="c"># 全局设置</span>
+│   ├── db.py           <span class="c"># 只读数据库访问</span>
+│   ├── seed_data.py    <span class="c"># 造演示数据</span>
+│   ├── semantic/       <span class="c"># 语义层：tables/metrics.yaml + loader</span>
+│   ├── agent/          <span class="c"># LangGraph 主图 + 提示词</span>
+│   ├── tools/          <span class="c"># 5 个工具</span>
+│   ├── guardrails/     <span class="c"># SQL 护栏（AST 校验）</span>
+│   ├── demo/           <span class="c"># 演示模式脚本</span>
+│   └── eval/           <span class="c"># 评测 Golden Set + runner</span>
+├── frontend/           <span class="c"># 原生 HTML/JS/CSS 聊天界面</span>
+└── tests/smoke.py      <span class="c"># 冒烟自测</span></pre>
+  </div>
+</div>
+
+<!-- ===== 1 请求流程 ===== -->
+<div class="panel" data-p="1">
+  <div class="card">
+    <h2>🔄 live 模式：一条消息的完整旅程</h2>
+    <div class="flow">
+      <div class="fnode"><b>你（前端）</b>输入「上个月 GMV 多少」</div>
+      <div class="farrow">→</div>
+      <div class="fnode"><b>main.py /api/chat</b>识别有 API Key → 走 live</div>
+      <div class="farrow">→</div>
+      <div class="fnode"><b>graph.py 主图</b>agent 节点调 LLM（function calling）</div>
+      <div class="farrow">↻</div>
+      <div class="fnode"><b>tools 节点</b>执行工具：查语义层→校验→执行→画图</div>
+    </div>
+    <p class="muted" style="margin-top:10px">循环往复：LLM 决定调用哪个工具 → 工具返回结果 → LLM 看结果再决定下一步 → 直到不再调用工具，输出最终回答。每步都通过 SSE 流式推给前端。</p>
+    <pre><span class="c"># main.py 里的核心分流逻辑</span>
+<span class="k">if</span> api_key <span class="k">and</span> base_url <span class="k">and</span> model:
+    <span class="k">async for</span> ev <span class="k">in</span> _run_live(...):   <span class="c"># 真 LLM 模式</span>
+        yield _sse(ev)
+<span class="k">else</span>:
+    <span class="k">async for</span> ev <span class="k">in</span> run_demo(...):    <span class="c"># 演示模式（脚本）</span>
+        ...</pre>
+  </div>
+
+  <div class="card">
+    <h2>📡 前后端约定的「事件协议」</h2>
+    <p class="muted">后端不一次性返回答案，而是按下面 6 种事件一条条「流」给前端，前端边收边画：</p>
+    <table>
+      <tr><th>事件 type</th><th>含义</th><th>前端怎么显示</th></tr>
+      <tr><td><code>thinking</code></td><td>LLM 一句话推理</td><td>灰色小字（◦ 开头）</td></tr>
+      <tr><td><code>step</code></td><td>开始调用某工具</td><td>过程卡片里一行 + 转圈</td></tr>
+      <tr><td><code>result</code></td><td>工具返回的结构化结果</td><td>过程卡片展开详情/表格/图</td></tr>
+      <tr><td><code>final</code></td><td>最终 Markdown 回答</td><td>正文气泡</td></tr>
+      <tr><td><code>done</code></td><td>结束 + 用量(步数/token/毫秒)</td><td>底部灰色小字</td></tr>
+      <tr><td><code>error</code></td><td>出错</td><td>红色横幅</td></tr>
+    </table>
+    <div class="note">这就是 SSE（Server-Sent Events）：<code>data: {json}\n\n</code> 一行一个事件，前端用 <code>reader.read()</code> 边读边解析。比 WebSocket 简单，单向够用。</div>
+  </div>
+</div>
+
+<!-- ===== 2 数据层 ===== -->
+<div class="panel" data-p="2">
+  <div class="card">
+    <h2>🗄️ db.py —— 档案室（只读）</h2>
+    <p class="muted">整个项目唯一碰数据库的地方，且强制只读。</p>
+    <ul>
+      <li><code>get_conn()</code>：懒加载一个全局连接，<b>DuckDB 以 <code>read_only=True</code> 打开</b>——这是「连接层护栏」，连数据库层面都不让写。</li>
+      <li><code>query(sql)</code>：执行查询，返回 <code>(列名, 行数据)</code>，加线程锁保证并发安全。</li>
+      <li><code>rows_to_dicts()</code>：把行转成 <code>[{列:值}]</code>，方便转 JSON 给前端；顺手把 Decimal/日期转成可序列化类型。</li>
+    </ul>
+    <div class="note">生产切换点：把 <code>query()</code> 换成 <code>psycopg</code> + 只读账号即可，上层代码无感知。</div>
+  </div>
+
+  <div class="card">
+    <h2>🏭 seed_data.py —— 数据工厂</h2>
+    <p class="muted">一条命令造出一套逼真的电商演示数据：<code>python -m app.seed_data</code></p>
+    <ul>
+      <li>6 张表：<code>regions / channels / categories / users / products / orders</code>。</li>
+      <li><span class="pill">确定性随机</span>用 <code>random.Random(42)</code>，每次生成结果一模一样，方便评测比对。</li>
+      <li>订单窗口<b>随运行日期滚动</b>：截至上个月的最近 12 个完整自然月，永不过期；带<b>增长趋势 + 季节性</b>（双 11 那月权重 1.38）。</li>
+      <li>造了 1200 个用户，其中 <code>phone</code>、<code>email</code> 是<b>故意塞的 PII 字段</b>，用来演示护栏拦截。</li>
+    </ul>
+    <pre><span class="c"># 订单按月增长 + 季节性</span>
+n = int(520 * (1.045 ** mi) * SEASON[(y, m)])</pre>
+  </div>
+
+  <div class="card">
+    <h2>📋 config.py —— 规章制度</h2>
+    <pre><span class="k">class</span> Settings:
+    db_path   = .../data/xihuang.duckdb   <span class="c"># 数据库文件</span>
+    frontend_dir = .../frontend           <span class="c"># 前端目录</span>
+    env_base_url / env_api_key / env_model <span class="c"># live 模式 LLM（读环境变量）</span>
+    max_steps = 8     <span class="c"># 单轮最多 8 次工具调用（超出强制收尾）</span>
+    max_rows  = 1000  <span class="c"># 强制 LIMIT 1000</span>
+    row_preview = 8   <span class="c"># 返回给 LLM 的预览行数（避免喂太多）</span></pre>
+    <p class="muted">用 <code>settings</code> 单例全局访问，所有限额/路径都集中在这里，改配置不用翻代码。</p>
+  </div>
+</div>
+
+<!-- ===== 3 语义层 ===== -->
+<div class="panel" data-p="3">
+  <div class="card">
+    <h2>📚 semantic/ —— 公司的「业务字典」（唯一事实来源）</h2>
+    <p class="muted">LLM 不懂你的业务表长啥样。语义层就是一份「说明书」，逼 LLM 先查字典再写 SQL，不能瞎编表名/字段名。</p>
+    <h3>tables.yaml —— 表与字段清单</h3>
+    <ul>
+      <li>每张表：<code>display</code>(中文名)、<code>description</code>、<code>synonyms</code>(同义词，如「订单」→orders)、<code>columns</code>(字段名/类型/说明/样例)、<code>joins</code>(允许的关联路径)。</li>
+      <li><code>pii: true</code> 标记隐私字段（users.phone / users.email）——护栏会据此拦截。</li>
+    </ul>
+    <h3>metrics.yaml —— 指标口径</h3>
+    <ul>
+      <li>6 个指标：GMV、订单量、客单价、退款率、付费用户数、新增用户数。</li>
+      <li>关键字段 <code>expression</code>(怎么算) + <code>required_filters</code>(必带过滤)。<br>
+      例如 GMV：<code>SUM(orders.amount)</code> + 必须带 <code>orders.status='completed'</code>（不含退款/取消）。</li>
+      <li><code>dimensions</code>：可下钻维度（month/region/channel/category）。</li>
+    </ul>
+    <div class="note">为什么要它？没有语义层，LLM 可能写 <code>SELECT * FROM sale</code>（表名都错）。有了它 + 强制先查，SQL 准确率大幅提升。</div>
+  </div>
+
+  <div class="card">
+    <h2>🔎 loader.py —— 字典管理员</h2>
+    <ul>
+      <li>启动时读两个 yaml，解析成 <code>Catalog</code> 对象（用 <code>@lru_cache</code> 只加载一次）。</li>
+      <li>预建好几个「索引」：<code>tables</code>(名→表)、<code>columns</code>(表→字段集)、<code>pii</code>(隐私字段集)、<code>edges</code>(join 关系边)。</li>
+      <li><code>_score()</code>：关键词/同义词打分（命中同义词 +3，命中描述词 +1），选出 top_k 表/指标。</li>
+      <li><code>joinable(used)</code>：用图遍历判断这些表是否<b>通过已声明的 join 边互相连通</b>——护栏第 7 关用它。</li>
+    </ul>
+    <pre><span class="c"># 检索本质：关键词匹配打分，不是向量</span>
+<span class="k">def</span> search_tables(query, top_k=3):
+    scored = [(self._score(query, keys, t.desc), t) <span class="k">for</span> t <span class="k">in</span> tables]
+    scored.sort(key=<span class="k">lambda</span> x:-x[0])
+    <span class="k">return</span> [t <span class="k">for</span> s,t <span class="k">in</span> scored[:top_k] <span class="k">if</span> s>0]</pre>
+    <div class="note">生产切换点：这里换成 pgvector 向量检索即可，接口签名不变（Schema-First Retrieval）。</div>
+  </div>
+</div>
+
+<!-- ===== 4 五个工具 ===== -->
+<div class="panel" data-p="4">
+  <div class="card">
+    <h2>🔧 tools/ —— 5 个执行员工</h2>
+    <p class="muted">每个工具都拆成 <code>_core()</code>（纯函数，返回 dict）+ <code>@tool</code> 包装（序列化 JSON，给 LLM 消费）。这样 demo / 测试能直接调 core。</p>
+    <table>
+      <tr><th>工具</th><th>部门</th><th>干啥</th></tr>
+      <tr><td><code>search_schema</code></td><td>retrieval.py</td><td>查表结构（字段/样例/join/PII 标记）</td></tr>
+      <tr><td><code>search_metrics</code></td><td>retrieval.py</td><td>查指标口径（expression + 必带过滤）</td></tr>
+      <tr><td><code>validate_sql</code></td><td>sql.py</td><td>AST 护栏校验，返回结构化错误供自修复</td></tr>
+      <tr><td><code>run_sql</code></td><td>sql.py</td><td>执行（执行前再校验一遍！）返回预览行</td></tr>
+      <tr><td><code>generate_chart</code></td><td>sql.py→chart.py</td><td>查询结果 → ECharts 配置（纯函数）</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>💡 关键设计：工具不抛异常，返回「结构化错误」</h2>
+    <pre><span class="c"># 校验失败长这样，LLM 能拿 reason/suggestion 自己改 SQL</span>
+{<span class="s">"ok"</span>: <span class="k">False</span>, <span class="s">"stage"</span>: <span class="s">"validate"</span>,
+ <span class="s">"reason"</span>: <span class="s">"涉及隐私字段：users.phone"</span>,
+ <span class="s">"suggestion"</span>: <span class="s">"手机号/邮箱等隐私字段禁止查询，请改为聚合统计"</span>}</pre>
+    <p class="muted">LLM 看到 suggestion 就会改 SQL 重试（prompts 里规定最多重试 2 次）。这叫「<b>自修复</b>」，比直接报错友好得多。</p>
+  </div>
+
+  <div class="card">
+    <h2>📊 chart.py —— 画图的「设计师」</h2>
+    <ul>
+      <li>纯函数 <code>build_option(type, title, records, x, y)</code>，不碰 LLM、不碰库。</li>
+      <li>根据记录数和 y 字段数自动选图：≤8 行单系列→柱状图，否则→折线图；可强制 pie。</li>
+      <li>输出标准 ECharts <code>option</code> JSON，前端直接 <code>echarts.init().setOption()</code>。</li>
+      <li>调色板 <code>PALETTE</code> 保证配色统一好看。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== 5 护栏 ===== -->
+<div class="panel" data-p="5">
+  <div class="card">
+    <h2>🛡️ guardrails/checks.py —— 合规保安（全项目最硬核）</h2>
+    <p class="muted">这是「工作流保证不能做什么」的落地。用 <b>sqlglot 把 SQL 解析成 AST（语法树）</b>，在树上做检查，而不是用关键字黑名单（不可靠，容易绕过）。</p>
+    <h3>8 道关卡，任一不过就拦</h3>
+    <ol>
+      <li><span class="tag ok">只读</span> 只放行 <code>SELECT</code> / <code>UNION</code>，<code>DELETE/UPDATE/INSERT</code> 直接死。</li>
+      <li><span class="tag">禁 SELECT *</span> 所有作用域都不行（聚合里的 <code>COUNT(*)</code> 例外）。</li>
+      <li><span class="tag">表存在</span> 表名必须在语义层登记过，否则「未知表」。</li>
+      <li><span class="tag">字段存在</span> 限定列名（如 orders.xx）必须真有这字段。</li>
+      <li><span class="tag bad">PII 拦截</span> 拦 <code>users.phone</code>/<code>users.email</code>，<b>连别名、CTE 改名、未限定列名回溯都兜得住</b>。</li>
+      <li><span class="tag">join 路径</span> 只允许语义层声明过的关联（call <code>catalog.joinable()</code>）。</li>
+      <li><span class="tag">LIMIT 改写</span> 没写 LIMIT 自动追加 <code>LIMIT 1000</code>，防止一次拉爆。</li>
+      <li><span class="tag ok">连接层</span> DuckDB <code>read_only</code> 打开，数据库层面兜底。</li>
+    </ol>
+    <pre><span class="c"># PII 拦截要兜住别名 / CTE / 未限定列名</span>
+<span class="k">for</span> c <span class="k">in</span> tree.find_all(exp.Column):
+    t = resolve(c.table) <span class="k">if</span> c.table <span class="k">else</span> None
+    <span class="k">if</span> t <span class="k">and</span> (t, c.name) <span class="k">in</span> catalog.pii:
+        pii_hits.append(...)        <span class="c"># 限定列名</span>
+    <span class="k">elif</span> <span class="k">not</span> t:                    <span class="c"># 没写表前缀，回溯谁有这字段</span>
+        owners = [tt <span class="k">for</span> tt <span class="k">in</span> known_used <span class="k">if</span> c.name <span class="k">in</span> catalog.columns[tt]]
+        <span class="k">if</span> any((tt,c.name) <span class="k">in</span> catalog.pii <span class="k">for</span> tt <span class="k">in</span> owners):
+            pii_hits.append(...)</pre>
+    <div class="note">「不信任上游」原则：<code>validate_sql</code> 校验过，<code>run_sql</code> <b>执行前还会再校验一次</b>——因为中间可能被人篡改。这也是为什么 <code>run_sql</code> 拿的是 <code>v["sql_out"]</code>（校验后改写过的版本）。</div>
+  </div>
+</div>
+
+<!-- ===== 6 大脑调度 ===== -->
+<div class="panel" data-p="6">
+  <div class="card">
+    <h2>🧠 agent/graph.py —— 部门经理 + 调度中心</h2>
+    <p class="muted">用 LangGraph 搭的「薄编排」主图，<b>全图只有 2 个节点</b>：</p>
+    <pre><span class="c">START → agent(LLM决策) ⇄ tools(执行) → END</span>
+   agent 有 tool_calls？ ──是──▶ tools ──▶ agent（循环）
+                          └─否──▶ END（输出最终回答）</pre>
+    <ul>
+      <li><code>agent_node</code>：拼上 System Prompt，调用 <code>llm.bind_tools(tools)</code>（function calling）。<b>预算超了（steps≥8）就改发 WRAP_UP_PROMPT 强制总结收尾</b>。</li>
+      <li><code>route</code>：看最后一条消息有没有 <code>tool_calls</code>，决定去 tools 还是 END。</li>
+      <li><code>_checkpointer = MemorySaver()</code>：会话记忆（靠 <code>thread_id</code> 区分会话），<b>重启即失</b>——生产换成 Postgres checkpointer。</li>
+      <li><code>get_graph()</code> 带缓存：同一组 LLM 配置只编译一次，省资源。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>📝 agent/prompts.py —— 经理工作手册（7 条纪律）</h2>
+    <p class="muted">把「纪律」写进 system prompt，是约束 LLM 的第一道软防线：</p>
+    <ol>
+      <li>写 SQL 前先 <code>search_metrics</code> / <code>search_schema</code>，禁止瞎猜表名。</li>
+      <li>指标必须按返回的 <code>expression</code> + <code>required_filters</code> 算（GMV 带 status='completed'）。</li>
+      <li><code>validate_sql</code> 通过才能 <code>run_sql</code>，失败按建议改，最多重试 2 次。</li>
+      <li>run_sql 只回预览行，要图就同一 SQL 传 <code>generate_chart</code>。</li>
+      <li>所有数字必须来自真实查询结果，禁止编造。</li>
+      <li>PII 请求必须拒绝并给聚合替代方案。</li>
+      <li>工具调用不超过 8 次，拿到数据立刻用中文答。</li>
+    </ol>
+    <div class="note">软硬两层：prompt 是「请自觉」，guardrails 是「强制」。Prompt 拦不住的（比如 LLM 硬要查 phone），由护栏兜底。</div>
+  </div>
+
+  <div class="card">
+    <h2>☎️ main.py —— 总机转接（FastAPI）</h2>
+    <ul>
+      <li><code>GET /</code> 返回前端页面；<code>/static</code> 挂前端静态文件。</li>
+      <li><code>GET /api/health</code> 健康检查：库是否就绪、多少表/指标/订单，前端欢迎页用它显示「演示数据：6 张表 · 6 指标 · N 笔订单」。</li>
+      <li><code>POST /api/chat</code> 核心接口：<code>ChatRequest</code> 收消息 + 会话 id +（可选）LLM 配置。内部 <code>gen()</code> 异步生成器按 SSE 协议逐条 yield 事件。</li>
+      <li><code>_run_live()</code>：真 LLM 模式，<code>graph.astream(..., stream_mode="updates")</code> 拿节点更新，翻译成 thinking/step/result/final/done 事件。</li>
+      <li><b>兜底</b>：任何异常都包成 <code>error</code> 事件返回，绝不挂连接。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== 7 demo vs live ===== -->
+<div class="panel" data-p="7">
+  <div class="card">
+    <h2>🎬 demo/traces.py —— 实习生的标准话术脚本</h2>
+    <p class="muted">没配 API Key 时，用 4 个写死的场景模拟「LLM 决策」，但<b>检索/校验/执行/画图全是真的</b>。</p>
+    <table>
+      <tr><th>你说的话（关键词）</th><th>走哪个场景</th><th>演示了啥</th></tr>
+      <tr><td>手机/邮箱/身份证</td><td><code>pii</code></td><td>护栏拦截 PII，给替代方案</td></tr>
+      <tr><td>趋势/每月/近6个月</td><td><code>trend</code></td><td>折线图 + 双序列（GMV+订单量）</td></tr>
+      <tr><td>地区/占比/分布</td><td><code>region</code></td><td>JOIN + 饼图</td></tr>
+      <tr><td>GMV/成交额/销售额</td><td><code>gmv</code></td><td>指标检索→校验→执行→结论+环比</td></tr>
+    </table>
+    <pre><span class="c"># 关键词匹配决定场景，其余走 FALLBACK 提示</span>
+<span class="k">def</span> pick_scenario(msg):
+    <span class="k">if</span> any(k <span class="k">in</span> m <span class="k">for</span> k <span class="k">in</span> [<span class="s">"手机"</span>,<span class="s">"email"</span>,...]): <span class="k">return</span> <span class="s">"pii"</span>
+    ...</pre>
+    <div class="note">每个场景函数都是 <code>async generator</code>，手动 <code>yield {"type":"step"/"result"/...}</code>，复用和 live 模式<b>完全相同</b>的事件格式——前端无需区分两种模式。</div>
+  </div>
+
+  <div class="card">
+    <h2>🔀 两种模式对比</h2>
+    <table>
+      <tr><th></th><th>演示模式（默认）</th><th>live 模式</th></tr>
+      <tr><td>LLM 决策</td><td>4 个脚本场景</td><td>真实 LLM（function calling）</td></tr>
+      <tr><td>SQL 校验/执行/图</td><td><span class="tag ok">真实运行</span></td><td><span class="tag ok">真实运行</span></td></tr>
+      <tr><td>用途</td><td>零配置体验全链路</td><td>任意自然语言问题</td></tr>
+      <tr><td>怎么开</td><td>不填 Key 即可</td><td>左下角填 OpenAI 兼容端点 / 设环境变量</td></tr>
+    </table>
+    <p class="muted">切换点就一行：<code>main.py</code> 里 <code>if api_key and base_url and model</code>。API Key 只存浏览器 localStorage，不落服务器。</p>
+  </div>
+</div>
+
+<!-- ===== 8 前端 ===== -->
+<div class="panel" data-p="8">
+  <div class="card">
+    <h2>🖥️ frontend/ —— 你看到的聊天界面（零构建）</h2>
+    <p class="muted">原生 HTML + JS + CSS，没有 npm/打包。ECharts 和 marked 走 CDN。</p>
+    <h3>index.html —— 页面骨架</h3>
+    <ul>
+      <li>左侧边栏：Logo、新建会话、会话列表、模式标签、<b>「API/模型配置」齿轮面板</b>。</li>
+      <li>主区：顶栏（会话标题+模式徽章）、消息流 <code>#thread</code>、底部输入框。</li>
+      <li>引入 <code>echarts</code>（画图）+ <code>marked</code>（Markdown 渲染）。</li>
+    </ul>
+    <h3>前端 —— 双版本：React 版（web/，默认）+ 原生 JS 旧版（frontend/，回退用）</h3>
+    <ul>
+      <li><b>会话管理</b>：sessions 存 localStorage，支持新建/切换/删除。</li>
+      <li><b>SSE 消费</b>：<code>fetch('/api/chat')</code> → <code>reader.read()</code> 循环 → 按 <code>\n\n</code> 切事件 → <code>handleEvent</code> 分发渲染。</li>
+      <li><b>过程卡片</b>：把 thinking/step/result 渲染成可折叠的「执行过程」卡片，工具带图标+状态（转圈/通过/失败）。</li>
+      <li><b>图表</b>：<code>appendChart</code> 收到 <code>option</code> 就 <code>echarts.init().setOption()</code>。</li>
+      <li><b>设置</b>：填 base/model/key 存 localStorage，<code>isLive()</code> 决定是否带 LLM 参数发请求。</li>
+    </ul>
+    <h3>style.css —— 装修</h3>
+    <p class="muted">CSS 变量统一管理配色，类 WorkBuddy 风格（蓝主色、圆角卡片、移动端响应式）。</p>
+    <div class="note">前端把事件类型映射到图标/中文标签，例如 <code>validate_sql → 🛡️ SQL 护栏校验</code>、<code>run_sql → ▶ 执行查询</code>。</div>
+  </div>
+</div>
+
+<!-- ===== 9 评测测试启动 ===== -->
+<div class="panel" data-p="9">
+  <div class="card">
+    <h2>✅ eval/ —— 质检部</h2>
+    <ul>
+      <li><code>golden_set.yaml</code>：10 条标准问答（simple/join/metric/time/fuzzy/deny 各类覆盖），每条带 <code>expect_sql</code>（标准答案 SQL）。</li>
+      <li><code>runner.py</code>：live 模式下跑这 10 条，<b>判定用确定性规则</b>——
+        <ul>
+          <li>普通题：取 Agent 最后执行的 SQL，和 expect_sql <b>各自跑一遍比结果</b>（数字四舍五入归一化后比对）。</li>
+          <li>deny 题（如导出手机号）：必须全程没成功执行含 phone 的 SQL。</li>
+        </ul>
+      </li>
+    </ul>
+    <pre><span class="c"># 不靠 LLM 当裁判，靠执行结果比对，客观可复现</span>
+got, exp = exec_result(sql), exec_result(item[<span class="s">"expect_sql"</span>])
+ok = normalize(got) == normalize(exp)</pre>
+    <div class="note">为什么不用 LLM 判？客观、便宜、可 CI。README 说这是 v0，后续再加 LLM Judge 处理模糊样本。</div>
+  </div>
+
+  <div class="card">
+    <h2>🧪 tests/smoke.py —— 冒烟自测</h2>
+    <p class="muted">5 组测试，<code>python tests/smoke.py</code> 一键验证全链路没坏：</p>
+    <ul>
+      <li><code>test_guardrails</code>：SELECT* / PII / DELETE / 未知表 / 合法 JOIN / LIMIT 改写。</li>
+      <li><code>test_retrieval</code>：指标与表召回正常。</li>
+      <li><code>test_sql_tools</code>：执行、PII 拦截、图表生成。</li>
+      <li><code>test_demo_traces</code>：4 个 demo 场景全链路（真校验/执行/图）。</li>
+      <li><code>test_graph_compile</code>：LangGraph 主图能编译。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>🚪 run.py + 怎么跑起来</h2>
+    <pre><span class="c"># 1. 装依赖</span>
+pip install -r requirements.txt
+<span class="c"># 2. 造演示数据（生成 data/xihuang.duckdb）</span>
+python -m app.seed_data
+<span class="c"># 3. 启动</span>
+python run.py
+<span class="c"># → 打开 http://127.0.0.1:8000</span>
+<span class="c"># （可选）live 模式跑评测：</span>
+XIHUANG_LLM_BASE_URL=... XIHUANG_LLM_API_KEY=... XIHUANG_LLM_MODEL=... \
+  python -m app.eval.runner</pre>
+    <p class="muted"><code>run.py</code> 只有 5 行：用 uvicorn 起 <code>app.main:app</code>。它是「公司大门」，本身没业务逻辑。</p>
+  </div>
+
+  <div class="card">
+    <h2>🎯 这套代码最值得学的 5 个设计</h2>
+    <ol>
+      <li><b>LLM 决策 + 工作流兜底</b>：软约束（prompt）和硬约束（护栏）双层，比纯 prompt 稳。</li>
+      <li><b>语义层</b>：把业务口径写进 YAML，LLM 先查再写，SQL 不乱飞。</li>
+      <li><b>AST 级护栏</b>：sqlglot 解析树，PII/SELECT*/join 路径都拦得住，比字符串匹配靠谱。</li>
+      <li><b>结构化错误自修复</b>：工具返回 reason+suggestion，LLM 自己改 SQL 重试。</li>
+      <li><b>demo/live 同事件协议</b>：脚本和真 LLM 输出格式完全一致，前端零改动切换。</li>
+    </ol>
+  </div>
+</div>
+
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.panel');
+  tabs.forEach(t=>t.addEventListener('click',()=>{
+    const i = t.dataset.t;
+    tabs.forEach(x=>x.classList.toggle('active', x===t));
+    panels.forEach(p=>p.classList.toggle('active', p.dataset.p===i));
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+</script>
+
+<hr>
+<section id="changelog-v2">
+  <h2>2026-10 更新日志（v2 大版本）</h2>
+  <p>本讲解最初基于 9 月的代码快照编写。10 月以来项目经历了一轮大迭代，
+     阅读上文时请以下面的变化为准：</p>
+  <ul>
+    <li><b>品牌</b>：项目曾更名「观澜」，现为 Deep Dive（深潜数据），图形徽标 + 墨黑交互主色。</li>
+    <li><b>前端</b>：迁移到 React 18 + TypeScript（<code>web/</code>，Vite 构建产物进
+        <code>frontend/dist/</code>，删 dist 即回退旧版）。聊天框上传、语音输入、
+        附件文件卡全部迁入 React 版。</li>
+    <li><b>流式</b>：SSE 新增 <code>delta</code>（主 Agent 打字机）与
+        <code>sub_delta</code>（子 Agent 思考直播）事件；子 Agent 过程事件走快车道
+        （asyncio.Queue）实时转发，委派期间不再是结尾整段回放。</li>
+    <li><b>记忆</b>：会话记忆从内存换为 AsyncSqliteSaver（<code>data/checkpoints.db</code>），
+        重启后多轮上下文与 HITL 中断点可续。</li>
+    <li><b>看板</b>：新增 AI 看板（<code>dash_spec.py</code>：LLM 规划一次，确定性渲染），
+        图型扩到 7 种（趋势/饼/柱/TOP/散点/堆叠/分组）；对话里可说"给 up_xxx 生成看板"
+        （主 Agent 的 generate_dashboard 工具）。</li>
+    <li><b>HITL</b>：澄清节点除指标口径外，新增<b>数据范围歧义</b>（"这个数据"泛指时
+        反问内置还是哪张上传表）。</li>
+    <li><b>主 Agent 工具池</b>：delegate_sql / rag_retrieve / generate_dashboard / delegate_viz
+        （知识检索与 AI 看板是直连普通工具，不再包子 Agent）。</li>
+    <li><b>工程</b>：死代码清理；CSV 上传 20 万行截断；工具池断言与冒烟同步更新。</li>
+  </ul>
+</section>
+</body>
+</html>

@@ -1,0 +1,73 @@
+tables:
+  - name: orders
+    display: 订单表
+    description: 电商订单事实表，一行一笔订单；含金额、状态、地区、渠道与下单时间。GMV、订单量等核心指标都基于本表。
+    synonyms: [订单, 交易, 购买, 消费]
+    columns:
+      - {name: id, type: BIGINT, desc: 主键}
+      - {name: order_no, type: VARCHAR, desc: 订单号, sample: ["SO202609000123"]}
+      - {name: user_id, type: BIGINT, desc: 下单用户 ID，关联 users.id}
+      - {name: product_id, type: BIGINT, desc: 商品 ID，关联 products.id}
+      - {name: channel_id, type: BIGINT, desc: 渠道 ID，关联 channels.id}
+      - {name: region_id, type: BIGINT, desc: 地区 ID，关联 regions.id}
+      - {name: amount, type: DECIMAL, desc: 订单金额（元），计算 GMV 用 completed 状态}
+      - {name: status, type: VARCHAR, desc: 订单状态, sample: ["completed", "pending", "refunded", "cancelled"]}
+      - {name: created_at, type: TIMESTAMP, desc: 下单时间，时间维度分析用}
+    joins:
+      - {table: users, on: "orders.user_id = users.id"}
+      - {table: products, on: "orders.product_id = products.id"}
+      - {table: channels, on: "orders.channel_id = channels.id"}
+      - {table: regions, on: "orders.region_id = regions.id"}
+
+  - name: users
+    display: 用户表
+    description: 注册用户维表；包含地区、会员等级。注意 phone / email 为 PII 字段，任何查询禁止引用。
+    synonyms: [用户, 会员, 客户]
+    columns:
+      - {name: id, type: BIGINT, desc: 主键}
+      - {name: name, type: VARCHAR, desc: 用户昵称（脱敏）}
+      - {name: region_id, type: BIGINT, desc: 所在地区 ID，关联 regions.id}
+      - {name: level, type: VARCHAR, desc: 会员等级, sample: ["普通", "白银", "黄金"]}
+      - {name: phone, type: VARCHAR, desc: 手机号（PII，禁止查询）, pii: true}
+      - {name: email, type: VARCHAR, desc: 邮箱（PII，禁止查询）, pii: true}
+      - {name: register_date, type: DATE, desc: 注册日期，新用户统计用}
+    joins:
+      - {table: regions, on: "users.region_id = regions.id"}
+
+  - name: products
+    display: 商品表
+    display_note: 商品维表
+    description: 商品维表；含 SKU、名称、类目与单价。品类分析需经本表关联类目。
+    synonyms: [商品, 货品, SKU]
+    columns:
+      - {name: id, type: BIGINT, desc: 主键}
+      - {name: sku, type: VARCHAR, desc: SKU 编码, sample: ["SKU-0103"]}
+      - {name: name, type: VARCHAR, desc: 商品名称, sample: ["无线耳机", "空气炸锅"]}
+      - {name: category_id, type: BIGINT, desc: 类目 ID，关联 categories.id}
+      - {name: price, type: DECIMAL, desc: 商品单价（元）}
+    joins:
+      - {table: categories, on: "products.category_id = categories.id"}
+
+  - name: regions
+    display: 地区表
+    description: 地区维表，6 个大区（华东/华南/华北/华中/西南/西北）。
+    synonyms: [地区, 区域, 大区]
+    columns:
+      - {name: id, type: BIGINT, desc: 主键}
+      - {name: name, type: VARCHAR, desc: 地区名称, sample: ["华东", "华南", "华北"]}
+
+  - name: channels
+    display: 渠道表
+    description: 渠道维表（iOS App / Android App / 小程序 / Web / H5）。
+    synonyms: [渠道, 端, 来源]
+    columns:
+      - {name: id, type: BIGINT, desc: 主键}
+      - {name: name, type: VARCHAR, desc: 渠道名称, sample: ["iOS App", "小程序"]}
+
+  - name: categories
+    display: 类目表
+    description: 商品类目维表（数码电子/家居厨房/服饰鞋包/美妆个护/运动户外/食品生鲜）。
+    synonyms: [类目, 品类, 分类]
+    columns:
+      - {name: id, type: BIGINT, desc: 主键}
+      - {name: name, type: VARCHAR, desc: 类目名称, sample: ["数码电子", "食品生鲜"]}

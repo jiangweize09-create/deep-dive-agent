@@ -1,0 +1,14 @@
+services:
+  deep-dive:
+    build: .
+    container_name: deep-dive-agent
+    environment:
+      - TZ=Asia/Shanghai   # 统一容器时区：使用统计按本地日期归档，凌晨问答不落到前一天
+    ports:
+      - "8000:8000"        # 宿主机 8000 → 容器 8000；局域网设备访问 http://<本机IP>:8000
+    volumes:
+      - ./data:/app/data   # 数据落宿主机：换容器/升级镜像，数据不丢
+    env_file:
+      - path: .env
+        required: false    # 演示模式无需 .env 也能启动；live 模式先复制 .env.example 填好
+    restart: unless-stopped
